@@ -6,46 +6,58 @@
 
 #include "inputSig.h"
 #include "senial.h"
-#define threads 4
 
-#define TAM 500
-#define iter 500
-float *senial = rcvdSignal;
+#define TamSignal 1250000
+#define TamFilter 500
+#define TamOutput (TamSignal + TamFilter -1)
 
 int main(int argc, char *argv[]){
-	//~ omp_set_num_threads(4);
-	//~ #pragma omp parallel
-	//~ {
-		//~ 
-	//~ }
-	int i,n;
-	time_t init, fin;
-	init = time(&init);
-	float y[TAM];
-	memset(y,0,TAM*sizeof(float));
-	printf("y[n] = { ");
-	for(i=0;i<TAM;i++){
-		printf("%.2f,",y[i]);
-	}
-	printf("\b}\n");
+	int threads;
+	double init, fin;
+	float y[TamOutput];
+	memset(y,0,(TamOutput)*sizeof(float));
+	
+	if(argc>1) threads = atoi(argv[1]);
+	else threads = omp_get_num_procs();
+	
+	init = omp_get_wtime();
 	
 	#pragma omp parallel num_threads(threads)
 	{
-		#pragma omp for
-		for(n=0;n<iter;n++){
-			for(i=0;i<=n;i++){
-				#pragma omp atomic
-				y[n] += input[n-i] * senial[i];
+		int i,n;		
+		#pragma omp for private(i,n)
+		for(n=0;n<(TamOutput);n++){
+			for(i=0;i<TamFilter;i++){
+				if(n-i>=0 && (n-i) < TamSignal)
+					y[n] += input[i] * rcvdSignal[n-i];
 			}
 		}
 	}
-	printf("y[n] = { ");
-	for(n=0;n<iter;n++){
-			printf("%f,",y[n]);
-	}
-	printf("\b }\n");
-	fin = time(&fin);
+	fin = omp_get_wtime();
+	printf("Demoró %f segundos usando %d hilos\n",(fin-init),threads);
 	
-	printf("Demoró %f segundos\n",difftime(fin,init));
+	FILE *dest, *reg;
+	
+	dest = fopen("resultado.h","w");
+	if(dest == NULL){
+		perror("error abriendo archivo");
+		exit(1);
+	}
+	
+	fprintf(dest,"output[%d] = {",TamOutput);
+	int n;
+	for(n=0;n<TamOutput;n++){
+		fprintf(dest,"%f ",y[n]);
+	}
+	fprintf(dest,"};");
+	fclose(dest);
+	
+	reg = fopen("registro.txt","a");
+	if(reg == NULL){
+		perror("error abriendo archivo");
+		exit(1);
+	}
+	fprintf(reg,"tiempo: %f\thilos: %d\n",(fin-init),threads);
+	
 	return EXIT_SUCCESS;
 }
